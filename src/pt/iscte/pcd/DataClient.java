@@ -49,6 +49,35 @@ public class DataClient {
         frame.setLayout(layout);
 
         //TODO: UI initialization
+        JLabel positionLabel = new JLabel("Posição a consultar");
+        JLabel lengthLabel = new JLabel("Comprimento");
+        JTextField positionField = new JTextField(10);
+        JTextField lengthField = new JTextField(10);
+        JTextArea resultArea = new JTextArea(3, 80);
+        JButton SearchButton = new JButton("Consultar");
+        SearchButton.addActionListener(e -> {
+
+        });
+
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.anchor = GridBagConstraints.NORTH;
+        c.weighty = 0.9;
+        c.weightx = 0.5;
+        c.gridx = 0;
+        c.gridy = 0;
+        frame.add(positionLabel, c);
+        c.gridx = 1;
+        frame.add(positionField, c);
+        c.gridx = 2;
+        frame.add(lengthLabel, c);
+        c.gridx = 3;
+        frame.add(lengthField, c);
+        c.gridx = 4;
+        frame.add(SearchButton, c);
+        c.gridx = 0;
+        c.gridy = 1;
+        c.gridwidth = 5;
+        frame.add(resultArea, c);
         frameInitialized = true;
     }
 
