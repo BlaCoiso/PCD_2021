@@ -48,36 +48,55 @@ public class DataClient {
 
         frame.setLayout(layout);
 
-        //TODO: UI initialization
-        JLabel positionLabel = new JLabel("Posição a consultar");
-        JLabel lengthLabel = new JLabel("Comprimento");
+        c.fill = GridBagConstraints.HORIZONTAL;
+
+        JLabel positionLabel = new JLabel("Posição a consultar: ");
+        c.gridx = 0;
+        c.gridy = 0;
+        c.weightx = 0;
+        c.ipadx = 0;
+        frame.add(positionLabel, c);
+
         JTextField positionField = new JTextField(10);
+        c.gridx = 1;
+        c.weightx = 0.5;
+        c.ipadx = 16;
+        frame.add(positionField, c);
+
+        JLabel lengthLabel = new JLabel("Comprimento: ");
+        c.gridx = 2;
+        c.weightx = 0;
+        c.ipadx = 0;
+        frame.add(lengthLabel, c);
+
         JTextField lengthField = new JTextField(10);
-        JTextArea resultArea = new JTextArea(3, 80);
+        c.gridx = 3;
+        c.weightx = 0.5;
+        c.ipadx = 16;
+        frame.add(lengthField, c);
+
         JButton SearchButton = new JButton("Consultar");
+        c.gridx = 4;
+        c.weightx = 0.25;
+        c.ipadx = 8;
+        frame.add(SearchButton, c);
         SearchButton.addActionListener(e -> {
 
         });
 
-        c.fill = GridBagConstraints.HORIZONTAL;
-        c.anchor = GridBagConstraints.NORTH;
-        c.weighty = 0.9;
-        c.weightx = 0.5;
-        c.gridx = 0;
-        c.gridy = 0;
-        frame.add(positionLabel, c);
-        c.gridx = 1;
-        frame.add(positionField, c);
-        c.gridx = 2;
-        frame.add(lengthLabel, c);
-        c.gridx = 3;
-        frame.add(lengthField, c);
-        c.gridx = 4;
-        frame.add(SearchButton, c);
+        JTextArea resultArea = new JTextArea("Respostas aparecerão aqui...");
+        resultArea.setLineWrap(true);
+        resultArea.setWrapStyleWord(true);
+        resultArea.setEditable(false);
+        c.fill = GridBagConstraints.BOTH;
         c.gridx = 0;
         c.gridy = 1;
         c.gridwidth = 5;
-        frame.add(resultArea, c);
+        c.weighty = 0.9;
+        frame.add(new JScrollPane(resultArea), c);
+
+        frame.setMinimumSize(new Dimension(500, 140));
+
         frameInitialized = true;
     }
 
