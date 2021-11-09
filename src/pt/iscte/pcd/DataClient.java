@@ -2,11 +2,12 @@ package pt.iscte.pcd;
 
 import javax.swing.*;
 import java.awt.*;
+import java.io.IOException;
+import java.util.Arrays;
 
 public class DataClient {
     private final JFrame frame;
-    private final String addr;
-    private final int port;
+    private final StorageClient client;
     private final JTextField positionField;
     private final JTextField lengthField;
     private final JTextArea resultArea;
@@ -15,8 +16,14 @@ public class DataClient {
 
     private DataClient(String addr, int port) {
         frame = new JFrame("Data Client");
-        this.addr = addr;
-        this.port = port;
+        try {
+            client = new StorageClient(addr, port);
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(frame, "Não foi possível estabelecer ligação ao nó", "Erro",
+                    JOptionPane.ERROR_MESSAGE);
+            e.printStackTrace();
+            throw new IllegalStateException("Failed to initialize client");
+        }
         positionField = new JTextField(10);
         lengthField = new JTextField(10);
         resultArea = new JTextArea("Respostas aparecerão aqui...");
@@ -85,7 +92,19 @@ public class DataClient {
         c.ipadx = 8;
         frame.add(SearchButton, c);
         SearchButton.addActionListener(e -> {
-
+            int start = Integer.parseInt(positionField.getText());
+            int length = Integer.parseInt(lengthField.getText());
+            try {
+                CloudByte[] data = client.requestData(start, length);
+                if (data == null) {
+                    resultArea.setText("Pedido falhou");
+                } else {
+                    resultArea.setText(Arrays.toString(data));
+                }
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(frame, "Não foi possível obter dados do cliente", "Erro", JOptionPane.ERROR_MESSAGE);
+                ex.printStackTrace();
+            }
         });
 
         resultArea.setLineWrap(true);

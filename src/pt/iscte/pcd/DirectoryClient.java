@@ -37,7 +37,6 @@ public class DirectoryClient implements Closeable {
 
     @Override
     public void close() throws IOException {
-        System.out.println("DirectoryClient.close");
         directorySocket.close();
     }
 

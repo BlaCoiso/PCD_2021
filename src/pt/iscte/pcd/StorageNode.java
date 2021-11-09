@@ -155,15 +155,19 @@ public class StorageNode {
             while (true) {
                 try {
                     Object req = inStream.readObject();
+                    boolean sentData = false;
                     if (req instanceof ByteBlockRequest) {
                         ByteBlockRequest request = (ByteBlockRequest) req;
                         int start = request.startIndex;
                         int end = start + request.length;
-                        if (start >= 0 && start < end) {
+                        if (start >= 0 && start < end && end <= data.length) {
                             CloudByte[] dataToSend = Arrays.copyOfRange(data, start, end);
                             outStream.writeObject(dataToSend);
+                            sentData = true;
                         }
                     }
+                    //Prevent remote from blocking if incorrect request received
+                    if (!sentData) outStream.writeObject(null);
                 } catch (IOException | ClassNotFoundException e) {
                     // EOFException = no more requests
                     if (!(e instanceof EOFException)) e.printStackTrace();
