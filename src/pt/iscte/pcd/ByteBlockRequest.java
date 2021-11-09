@@ -1,24 +1,34 @@
 package pt.iscte.pcd;
 
-import java.util.LinkedList;
+import java.io.Serializable;
 
-public class ByteBlockRequest {
+public class ByteBlockRequest implements Serializable {
 
-    private final int PEDIDOS = 10000;
-    private final LinkedList<Integer> blocos = new LinkedList<>();
+    private int startIndex;
+    private int length;
 
-    public ByteBlockRequest() {
-        for (int i = 0; i < PEDIDOS; i++) {
-            blocos.add(i);
-        }
+    public ByteBlockRequest(int startIndex, int length) {
+        this.startIndex = startIndex;
+        this.length = length;
     }
 
-    public synchronized int retirarPedido() {
-        return blocos.pop();
+    public int getStartIndex() {
+        return startIndex;
     }
 
+    public void setStartIndex(int startIndex) {
+        this.startIndex = startIndex;
+    }
 
-/*    A comunicação com os outros nós deve ser feita sobre canais de objetos, transmitindo pedidos
+    public int getLength() {
+        return length;
+    }
+
+    public void setLength(int length) {
+        this.length = length;
+    }
+
+    /*    A comunicação com os outros nós deve ser feita sobre canais de objetos, transmitindo pedidos
     através da classe ByteBlockRequest, com os atributos inteiros startIndex e length,
     este sempre com o valor 100. Os dados destes blocos devem ser devolvidos num array de
     CloudByte (ver descrição abaixo).
