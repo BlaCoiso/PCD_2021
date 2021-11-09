@@ -1,3 +1,4 @@
 *.jar
 /.idea/
 /out/
+*.bin

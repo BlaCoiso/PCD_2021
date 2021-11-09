@@ -3,8 +3,9 @@ package pt.iscte.pcd;
 import java.io.Serializable;
 
 /**
- * @author luismota
  * Class to represent 7-bit bytes. Extra bit is for parity, and is set in constructor.
+ *
+ * @author luismota
  */
 public class CloudByte implements Serializable {
     byte value;
@@ -19,13 +20,7 @@ public class CloudByte implements Serializable {
     }
 
     private static byte countOnes(byte value) {
-        //return (byte) Integer.bitCount(value); //TODO: Test this
-        byte count = 0;
-        while (value > 0) {
-            count += value % 2;
-            value /= 2;
-        }
-        return count;
+        return (byte) Integer.bitCount(value);
     }
 
     public byte getValue() {

@@ -7,6 +7,9 @@ public class DataClient {
     private final JFrame frame;
     private final String addr;
     private final int port;
+    private final JTextField positionField;
+    private final JTextField lengthField;
+    private final JTextArea resultArea;
 
     private boolean frameInitialized = false;
 
@@ -14,6 +17,9 @@ public class DataClient {
         frame = new JFrame("Data Client");
         this.addr = addr;
         this.port = port;
+        positionField = new JTextField(10);
+        lengthField = new JTextField(10);
+        resultArea = new JTextArea("Respostas aparecerão aqui...");
     }
 
     public static void main(String[] args) {
@@ -57,7 +63,6 @@ public class DataClient {
         c.ipadx = 0;
         frame.add(positionLabel, c);
 
-        JTextField positionField = new JTextField(10);
         c.gridx = 1;
         c.weightx = 0.5;
         c.ipadx = 16;
@@ -69,7 +74,6 @@ public class DataClient {
         c.ipadx = 0;
         frame.add(lengthLabel, c);
 
-        JTextField lengthField = new JTextField(10);
         c.gridx = 3;
         c.weightx = 0.5;
         c.ipadx = 16;
@@ -84,7 +88,6 @@ public class DataClient {
 
         });
 
-        JTextArea resultArea = new JTextArea("Respostas aparecerão aqui...");
         resultArea.setLineWrap(true);
         resultArea.setWrapStyleWord(true);
         resultArea.setEditable(false);

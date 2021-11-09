@@ -1,196 +1,275 @@
 package pt.iscte.pcd;
 
 import java.io.*;
-import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.CountDownLatch;
 
 public class StorageNode {
-    private ServerSocket serverNodeSocket;
-    private final int portDirectory;
-    private final int portNode;
-    private Socket socket;
-    PrintWriter out;
-    BufferedReader in;
-    private InetAddress inetAddress;
-    private final CloudByte[] dados = new CloudByte[1000000];
-    private final int REQUESTSSIZE = 10000;
-    private final LinkedList<ByteBlockRequest> requests = new LinkedList<>();
+    private static final int DATA_SIZE = 1000000;
+    private final String directoryAddress;
+    private final int directoryPort;
+    private final int nodePort;
+    private Socket directorySocket = null;
+    private PrintWriter directoryWriter = null;
+    private BufferedReader directoryReader = null;
+    private final CloudByte[] data = new CloudByte[DATA_SIZE];
+    private boolean dataInitialized = false;
 
-    public StorageNode(String addr, int portDirectory, int port, String fileName) {
-        this.portNode = port;
-        this.portDirectory = portDirectory;
-        for (int i = 0; i < REQUESTSSIZE; i += 100) {
-            requests.add(new ByteBlockRequest(i, 100));
+    public StorageNode(String directoryAddress, int directoryPort, int nodePort, String dataFilePath) {
+        this.directoryAddress = directoryAddress;
+        this.directoryPort = directoryPort;
+        this.nodePort = nodePort;
+
+        //nodePort == 0 -> system assigned port
+        if (directoryPort <= 0 || nodePort < 0 || directoryPort > 0xFFFF || nodePort > 0xFFFF) {
+            throw new IllegalArgumentException("Port numbers must be between 0 and " + 0xFFFF);
         }
+        if (dataFilePath != null) {
+            try {
+                readData(dataFilePath);
+            } catch (IOException e) {
+                e.printStackTrace();
+                throw new IllegalArgumentException("Couldn't read data file");
+            }
+        }
+    }
+
+    private void requestData() {
+        requestData(0, DATA_SIZE);
+    }
+
+    //TODO: Refactor to outer class
+    private void requestData(int start, int length) {
+        InetSocketAddress[] nodes = getNodes();
+        if (nodes == null || nodes.length == 0) throw new IllegalStateException("Failed to find nodes");
+        Queue<ByteBlockRequest> requests;
+        if (length < ByteBlockRequest.BLOCK_LENGTH) {
+            ByteBlockRequest req = new ByteBlockRequest(start, length);
+            requests = new ArrayDeque<>(1);
+            requests.add(req);
+        } else {
+            requests = new ArrayDeque<>(length / ByteBlockRequest.BLOCK_LENGTH);
+            int end = start + length;
+            for (int i = start; i < end; i += ByteBlockRequest.BLOCK_LENGTH) {
+                ByteBlockRequest req = new ByteBlockRequest(i, Integer.min(end - start, ByteBlockRequest.BLOCK_LENGTH));
+                requests.add(req);
+            }
+        }
+        System.out.println("Sending " + requests.size() + " requests to " + nodes.length + " nodes");
+        CountDownLatch requestLatch = new CountDownLatch(requests.size());
+
+        for (InetSocketAddress node : nodes) {
+            DownloaderThread thread = new DownloaderThread(node, requestLatch, requests);
+            thread.start();
+        }
+
         try {
-            this.serverNodeSocket = new ServerSocket(port);
-            this.inetAddress = InetAddress.getByName(addr);
-            socket = new Socket(inetAddress, this.portDirectory);
-            out = new PrintWriter(new BufferedWriter(new OutputStreamWriter(socket.getOutputStream())), true);
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            requestLatch.await();
+        } catch (InterruptedException e) {
+            //This should never throw since there's nothing interrupting this call
+            throw new IllegalStateException("requestData interrupted");
+        }
+    }
+
+    //TODO: Refactor to outer class
+    private InetSocketAddress[] getNodes() {
+        directoryWriter.println("nodes");
+        List<String> results = new ArrayList<>();
+        String line;
+        try {
+            while ((line = directoryReader.readLine()).compareToIgnoreCase("END") != 0) results.add(line);
+        } catch (IOException e) {
+            System.err.println("Failed to get list of nodes");
+            e.printStackTrace();
+            return null;
+        }
+        List<InetSocketAddress> addresses = new ArrayList<>(results.size());
+        for (String v : results) {
+            String[] split = v.split(" ");
+            if (split.length == 3 && split[0].compareToIgnoreCase("node") == 0) {
+                try {
+                    InetSocketAddress addr = new InetSocketAddress(split[1], Integer.parseInt(split[2]));
+                    // If no address or this node is self then ignore
+                    if (addr.isUnresolved() || (addr.getPort() == nodePort && addr.getAddress().equals(directorySocket.getLocalAddress())))
+                        continue;
+                    addresses.add(addr);
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        return addresses.toArray(new InetSocketAddress[0]);
+    }
+
+    private void register() {
+        try {
+            directorySocket = new Socket(directoryAddress, directoryPort);
+            directoryWriter = new PrintWriter(new OutputStreamWriter(directorySocket.getOutputStream()), true);
+            directoryWriter.printf("INSC %s %d\n", directorySocket.getLocalAddress().getHostAddress(), nodePort);
+            directoryReader = new BufferedReader(new InputStreamReader(directorySocket.getInputStream()));
         } catch (IOException e) {
             e.printStackTrace();
+            if (directorySocket != null && !directorySocket.isClosed()) {
+                try {
+                    directorySocket.close();
+                } catch (IOException ignored) {
+                }
+            }
+            throw new IllegalArgumentException("Failed to register in directory");
         }
-        if (!fileName.isEmpty()) {
-            loadDataFromFile(fileName);
-            signUp();
-        } else {
-            signUp();
-            loadDataFromNodes();
+    }
+
+    private void readData(String dataFilePath) throws IOException {
+        File dataFile = new File(dataFilePath);
+        if (!dataFile.exists() || !dataFile.isFile() || !dataFile.canRead()) {
+            throw new IllegalArgumentException("File is invalid or cannot be read");
         }
+        byte[] bytes = Files.readAllBytes(dataFile.toPath());
+        if (bytes.length != DATA_SIZE) throw new AssertionError("Expected bytes.length == " + DATA_SIZE);
+        for (int i = 0; i < DATA_SIZE; ++i) {
+            data[i] = new CloudByte(bytes[i]);
+        }
+        dataInitialized = true;
+    }
+
+    private void start() {
+        register();
+        if (!dataInitialized) requestData();
+        try {
+            ServerSocket nodeSocket = new ServerSocket(nodePort);
+            //noinspection InfiniteLoopStatement
+            while (true) {
+                Socket sock = nodeSocket.accept();
+                try {
+                    Thread nodeThread = new NodeThread(sock);
+                    nodeThread.start();
+                } catch (IOException e) {
+                    System.err.println("Failed to start node thread");
+                    e.printStackTrace();
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Failed to start node socket");
+            e.printStackTrace();
+        }
+
     }
 
     private class NodeThread extends Thread {
-        private final Socket socketNT;
-        ObjectOutputStream outObj;
-        ObjectInputStream inObj;
+        private final Socket socket;
+        private final ObjectOutputStream outStream;
+        private final ObjectInputStream inStream;
 
-        public NodeThread(Socket socketNT) {
-            this.socketNT = socketNT;
+        public NodeThread(Socket socket) throws IOException {
+            this.socket = socket;
             try {
-                outObj = new ObjectOutputStream(socketNT.getOutputStream());
-                inObj = new ObjectInputStream(socketNT.getInputStream());
-            } catch (Exception e) {
-                e.printStackTrace();
+                this.outStream = new ObjectOutputStream(socket.getOutputStream());
+                this.inStream = new ObjectInputStream(socket.getInputStream());
+            } catch (IOException e) {
+                socket.close();
+                throw e;
             }
         }
 
+        @Override
         public void run() {
-            sendDataToNode();
-        }
-
-        public void sendDataToNode() {
-            try {
-                ByteBlockRequest bloco = (ByteBlockRequest) inObj.readObject();
-                CloudByte[] bytesToSend = new CloudByte[bloco.getLength()];
-                for (int i = bloco.getStartIndex(), j = 0; i < bloco.getLength(); i++, j++) {
-                    bytesToSend[j] = dados[i];
-                }
-                outObj.writeObject(bytesToSend);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    public void signUp() {
-        String msg = "INSC " + inetAddress.toString() + " " + portNode;
-        //enviar mensagem de inscricao para o diretorio
-        out.println(msg);
-    }
-
-    public void loadDataFromFile(String fileName) {
-        Path path = Paths.get(fileName);
-        try {
-            byte[] data = Files.readAllBytes(path);
-            for (int i = 0; i < data.length; i++)
-                dados[i] = new CloudByte(data[i]);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    /* Caso os dados não existam localmente (por o ficheiro não ser dado como argumento, não
-    existir ou não ter conteúdo válido), devem ser descarregados dos outros nós existentes na
-    rede. Para tal, deve ser logo consultado o diretório, para conhecer os endereços e portos de
-    todos os nós existentes no momento*/
-    public void loadDataFromNodes() {
-        String msg = "nodes";
-        //escrever mensagem no proprio canal para obter os nós
-        out.println(msg);
-        List<String> arrayNodes = new ArrayList<>();
-        try {
-            Thread.sleep(1000);
-            while (in.ready()) {
-                String msgInicial = in.readLine();
-                if (!msgInicial.equalsIgnoreCase("END")) {
-                    String[] componentesMensagem = msgInicial.split(" ");
-                    arrayNodes.add(componentesMensagem[2]);
-                }
-            }
-            //consultar um dos nós para descarregar dados
-            if (arrayNodes.size() > 0) {
-                while (requests.size() != 0) {
-                    for (String nodePort : arrayNodes) {
-                        Socket socketNodeData = new Socket(inetAddress, Integer.parseInt(nodePort));
-                        ObjectInputStream inObj = new ObjectInputStream(socketNodeData.getInputStream());
-                        ObjectOutputStream outObj = new ObjectOutputStream(socketNodeData.getOutputStream());
-                        outObj.writeObject(getByteBlockRequest());
-                    }
-                }
-                //Apenas quando o descarregamento estiver completo deve a aplicação prosseguir para o seu funcionamento normal.
-                //falta a estrutura de coordenacao, abaixo apenas teste para ver se funciona
-                int k = 0;
-                for (String nodePort : arrayNodes) {
-                    Socket socketNodeData = new Socket(inetAddress, Integer.parseInt(nodePort));
-                    ObjectInputStream inObj = new ObjectInputStream(socketNodeData.getInputStream());
-                    ObjectOutputStream outObj = new ObjectOutputStream(socketNodeData.getOutputStream());
-                    while (true) {
-                        CloudByte[] bytes = (CloudByte[]) inObj.readObject();
-                        if (bytes == null || bytes.length == 0)
-                            break;
-                        for (int i = 0; i < bytes.length; i++) {
-                            dados[k] = bytes[i];
-                            k++;
+            while (true) {
+                try {
+                    Object req = inStream.readObject();
+                    if (req instanceof ByteBlockRequest) {
+                        ByteBlockRequest request = (ByteBlockRequest) req;
+                        int start = request.startIndex;
+                        int end = start + request.length;
+                        if (start >= 0 && start < end) {
+                            CloudByte[] dataToSend = Arrays.copyOfRange(data, start, end);
+                            outStream.writeObject(dataToSend);
                         }
                     }
+                } catch (IOException | ClassNotFoundException e) {
+                    if (!(e instanceof EOFException)) e.printStackTrace();
+                    break;
                 }
-
-            } else
-                System.err.println("Não Existe nenhum nó no diretorio");
-        } catch (Exception e) {
-            e.printStackTrace();
+            }
+            try {
+                socket.close();
+            } catch (IOException e) {
+                System.err.println("Failed to close socket");
+                e.printStackTrace();
+            }
         }
     }
 
-    public synchronized ByteBlockRequest getByteBlockRequest() {
-        return requests.pop();
-    }
+    private class DownloaderThread extends Thread {
+        private final InetSocketAddress nodeAddr;
+        private final CountDownLatch requestLatch;
+        private final Queue<ByteBlockRequest> requestQueue;
 
-    public void serve() {
-        //noinspection InfiniteLoopStatement
-        while (true) {
-            try {
-                Socket s = this.serverNodeSocket.accept();
-                (new NodeThread(s)).start();
-            } catch (IOException var3) {
-                System.err.println("Erro ao aceitar ligação do outro nó.");
+        private DownloaderThread(InetSocketAddress nodeAddr, CountDownLatch requestLatch, Queue<ByteBlockRequest> requestQueue) {
+            this.nodeAddr = nodeAddr;
+            this.requestLatch = requestLatch;
+            this.requestQueue = requestQueue;
+        }
+
+        @Override
+        public void run() {
+            try (Socket nodeSocket = new Socket(nodeAddr.getAddress(), nodeAddr.getPort())) {
+                ObjectInputStream inStream = new ObjectInputStream(nodeSocket.getInputStream());
+                ObjectOutputStream outStream = new ObjectOutputStream(nodeSocket.getOutputStream());
+
+                int transferCount = 0;
+                //TODO: Implement concurrent queue
+                ByteBlockRequest request;
+                do {
+                    synchronized (requestQueue) {
+                        request = requestQueue.isEmpty() ? null : requestQueue.poll();
+                    }
+                    if (request == null) break;
+                    //FIXME: Deadlock when a thread fails to download a chunk
+                    try {
+                        outStream.writeObject(request);
+                        //FIXME: Possible crash when remote sends wrong type data
+                        CloudByte[] result = (CloudByte[]) inStream.readObject();
+                        synchronized (data) {
+                            System.arraycopy(result, 0, data, request.startIndex, request.length);
+                        }
+                        requestLatch.countDown();
+                        transferCount++;
+                    } catch (IOException | ClassNotFoundException e) {
+                        System.err.println("Failed to receive request");
+                        e.printStackTrace();
+                        break;
+                    }
+                } while (true);
+                System.out.println("transferCount = " + transferCount);
+            } catch (IOException e) {
+                System.err.println("Failed to open object streams for downloader thread");
+                e.printStackTrace();
             }
         }
     }
 
     public static void main(String[] args) {
         if (args.length < 3) {
-            System.err.println("Expected 3 arguments: <addrDiretory> <portDiretory> <portStorageNode>");
+            System.err.println("Usage: StorageNode <directoryAddr> <directoryPort> <nodePort> [file]");
             return;
         }
-        String addrStr = args[0];
-        String portDiretoryStr = args[1];
-        String portStorageNodeStr = args[2];
-        String dataFileName = "";
-        if (args.length == 4)
-            dataFileName = args[3];
-        int port, portDirectory;
-        try {
-            port = Integer.parseInt(portStorageNodeStr);
-            portDirectory = Integer.parseInt(portDiretoryStr);
-        } catch (NumberFormatException e) {
-            System.err.println("Argument port must be an integer in range 1-" + 0xFFFF);
-            return;
-        }
-        if (port <= 0 || port > 0xFFFF) {
-            System.err.println("Argument port must be in range 1-" + 0xFFFF + ", got " + port);
-            return;
-        }
+        String addr = args[0];
+        String dirPortString = args[1];
+        String nodePortString = args[2];
+        String dataFilePath = args.length > 3 ? args[3] : null;
+        if (dataFilePath != null && dataFilePath.isEmpty()) dataFilePath = null;
 
-        StorageNode node = new StorageNode(addrStr, portDirectory, port, dataFileName);
-        node.serve();
+        try {
+            int dirPort = Integer.parseInt(dirPortString);
+            int nodePort = Integer.parseInt(nodePortString);
+            StorageNode node = new StorageNode(addr, dirPort, nodePort, dataFilePath);
+            //TODO: Launch another thread for console input for error injection
+            node.start();
+        } catch (NumberFormatException e) {
+            System.err.println("Port numbers must be integers");
+        }
     }
 }
