@@ -68,4 +68,11 @@ public class DirectoryClient implements Closeable {
         }
         return addresses.toArray(new InetSocketAddress[0]);
     }
+
+    @Override
+    public String toString() {
+        return "DirectoryClient{directory=" +
+                directorySocket.getInetAddress().getHostAddress() + ":" + directorySocket.getPort() +
+                ", localPort=" + localPort + '}';
+    }
 }

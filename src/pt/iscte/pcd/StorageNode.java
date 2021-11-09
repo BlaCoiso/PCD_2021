@@ -63,6 +63,7 @@ public class StorageNode {
         CountDownLatch requestLatch = new CountDownLatch(requests.size());
 
         for (InetSocketAddress node : nodes) {
+            System.out.println("Starting download thread for node " + node.getAddress().getHostAddress() + ":" + node.getPort());
             DownloaderThread thread = new DownloaderThread(node, requestLatch, requests, data);
             thread.start();
         }
@@ -90,6 +91,7 @@ public class StorageNode {
             data[i] = new CloudByte(bytes[i]);
         }
         dataInitialized = true;
+        System.out.println("Loaded data from file: \"" + dataFilePath + "\"");
     }
 
     private void start() {
@@ -98,6 +100,17 @@ public class StorageNode {
             register();
             if (!dataInitialized) requestData();
 
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                if (directory != null) {
+                    try {
+                        System.out.println("Closing sockets...");
+                        directory.close();
+                        nodeSocket.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }));
             //noinspection InfiniteLoopStatement
             while (true) {
                 Socket sock = nodeSocket.accept();

@@ -41,6 +41,10 @@ public class StorageClient implements Closeable {
         nodeSocket.close();
     }
 
+    public boolean isClosed() {
+        return nodeSocket.isClosed();
+    }
+
     public CloudByte[] requestData(int start, int length) throws IOException {
         return requestData(new ByteBlockRequest(start, length));
     }
@@ -58,5 +62,10 @@ public class StorageClient implements Closeable {
         } catch (ClassNotFoundException ignored) {
         }
         return null;
+    }
+
+    @Override
+    public String toString() {
+        return "Node[" + nodeSocket.getInetAddress().getHostAddress() + ":" + nodeSocket.getPort() + "]";
     }
 }

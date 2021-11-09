@@ -47,7 +47,7 @@ public class DownloaderThread extends Thread {
                     break;
                 }
             } while (true);
-            System.out.println("completedRequests = " + completedRequests);
+            System.out.println("Completed requests for node " + client + ": " + completedRequests);
         } catch (IOException e) {
             System.err.println("Failed to open object streams for downloader thread");
             e.printStackTrace();
