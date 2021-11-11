@@ -45,7 +45,7 @@ public class DirectoryClient implements Closeable {
         List<String> results = new ArrayList<>();
         String line;
         try {
-            while ((line = directoryReader.readLine()).compareToIgnoreCase("END") != 0) results.add(line);
+            while (!(line = directoryReader.readLine()).equalsIgnoreCase("END")) results.add(line);
         } catch (IOException e) {
             System.err.println("Failed to get list of nodes");
             e.printStackTrace();

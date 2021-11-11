@@ -9,7 +9,6 @@ import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Queue;
 import java.util.Scanner;
-import java.util.concurrent.CountDownLatch;
 
 public class StorageNode {
     private static final int DATA_SIZE = 1000000;
@@ -43,10 +42,16 @@ public class StorageNode {
         requestData(0, DATA_SIZE);
     }
 
-    //TODO: Refactor to outer class
+    //TODO: Refactor to outer class (DownloaderThread)
     private void requestData(int start, int length) {
         InetSocketAddress[] nodes = directory.getNodes();
-        if (nodes == null || nodes.length == 0) throw new IllegalStateException("Failed to find nodes");
+        if (nodes == null || nodes.length == 0) {
+            try {
+                directory.close();
+            } catch (IOException ignored) {
+            }
+            throw new IllegalStateException("Failed to find nodes");
+        }
         Queue<ByteBlockRequest> requests;
         if (length < ByteBlockRequest.BLOCK_LENGTH) {
             ByteBlockRequest req = new ByteBlockRequest(start, length);
@@ -61,16 +66,17 @@ public class StorageNode {
             }
         }
         System.out.println("Sending " + requests.size() + " requests to " + nodes.length + " nodes");
-        CountDownLatch requestLatch = new CountDownLatch(requests.size());
+
+        SynchronizedRequestQueue<ByteBlockRequest> requestQueue = new SynchronizedRequestQueue<>(requests);
 
         for (InetSocketAddress node : nodes) {
             System.out.println("Starting download thread for node " + node.getAddress().getHostAddress() + ":" + node.getPort());
-            DownloaderThread thread = new DownloaderThread(node, requestLatch, requests, data);
+            DownloaderThread thread = new DownloaderThread(node, requestQueue, data);
             thread.start();
         }
 
         try {
-            requestLatch.await();
+            requestQueue.await();
         } catch (InterruptedException e) {
             //This should never throw since there's nothing interrupting this call
             throw new IllegalStateException("requestData interrupted");
@@ -166,6 +172,7 @@ public class StorageNode {
                         int start = request.startIndex;
                         int end = start + request.length;
                         if (start >= 0 && start < end && end <= data.length) {
+                            //TODO: Check for errors before sending
                             CloudByte[] dataToSend = Arrays.copyOfRange(data, start, end);
                             outStream.writeObject(dataToSend);
                             sentData = true;
