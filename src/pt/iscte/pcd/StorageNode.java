@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Queue;
+import java.util.Scanner;
 import java.util.concurrent.CountDownLatch;
 
 public class StorageNode {
@@ -112,6 +113,8 @@ public class StorageNode {
                 }
             }));
             //noinspection InfiniteLoopStatement
+            ErrorInjectionThread errorInjectionThread = new ErrorInjectionThread();
+            errorInjectionThread.start();
             while (true) {
                 Socket sock = nodeSocket.accept();
                 try {
@@ -179,6 +182,40 @@ public class StorageNode {
             } catch (IOException e) {
                 System.err.println("Failed to close socket");
                 e.printStackTrace();
+            }
+        }
+    }
+
+    private class ErrorInjectionThread extends Thread {
+        private final Scanner scanner = new Scanner(System.in);
+
+        public void run() {
+            while (true) {
+                while (true) {
+                    String userInput = scanner.nextLine();
+                    if (userInput != null && !userInput.isEmpty()) {
+                        String[] userInputComponentes = userInput.split(" ");
+                        if (userInputComponentes.length == 2) {
+                            if (!userInputComponentes[0].equalsIgnoreCase("ERROR")) {
+                                System.err.println("Please insert ERROR <byte_num> ");
+                                break;
+                            }
+                            try {
+                                int errorPosition = Integer.parseInt(userInputComponentes[1]);
+                                if (errorPosition < 0 || errorPosition >= 1000000) {
+                                    System.err.println("Please insert number between 0 e 999999");
+                                    break;
+                                }
+                                data[errorPosition].makeByteCorrupt();
+                                System.out.println("Is parity ok? " + data[errorPosition].isParityOk());
+                                System.out.println("successfully error insertion");
+                            } catch (NumberFormatException e) {
+                                System.err.println("Invalid number for insertion error");
+                            }
+                        } else
+                            System.out.println("Invalid input, please insert ERROR <byte_num>");
+                    }
+                }
             }
         }
     }
