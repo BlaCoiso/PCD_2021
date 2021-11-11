@@ -112,9 +112,11 @@ public class StorageNode {
                     }
                 }
             }));
-            //noinspection InfiniteLoopStatement
+
             ErrorInjectionThread errorInjectionThread = new ErrorInjectionThread();
             errorInjectionThread.start();
+
+            //noinspection InfiniteLoopStatement
             while (true) {
                 Socket sock = nodeSocket.accept();
                 try {
@@ -190,31 +192,26 @@ public class StorageNode {
         private final Scanner scanner = new Scanner(System.in);
 
         public void run() {
+            //noinspection InfiniteLoopStatement
             while (true) {
-                while (true) {
-                    String userInput = scanner.nextLine();
-                    if (userInput != null && !userInput.isEmpty()) {
-                        String[] userInputComponentes = userInput.split(" ");
-                        if (userInputComponentes.length == 2) {
-                            if (!userInputComponentes[0].equalsIgnoreCase("ERROR")) {
-                                System.err.println("Please insert ERROR <byte_num> ");
-                                break;
-                            }
-                            try {
-                                int errorPosition = Integer.parseInt(userInputComponentes[1]);
-                                if (errorPosition < 0 || errorPosition >= 1000000) {
-                                    System.err.println("Please insert number between 0 e 999999");
-                                    break;
-                                }
-                                data[errorPosition].makeByteCorrupt();
-                                System.out.println("Is parity ok? " + data[errorPosition].isParityOk());
-                                System.out.println("successfully error insertion");
-                            } catch (NumberFormatException e) {
-                                System.err.println("Invalid number for insertion error");
-                            }
-                        } else
-                            System.out.println("Invalid input, please insert ERROR <byte_num>");
+                String input = scanner.nextLine();
+                if (input == null || input.isEmpty()) continue;
+                String[] inputSplit = input.split(" ");
+                if (inputSplit.length != 2 || !inputSplit[0].equalsIgnoreCase("ERROR")) {
+                    System.out.println("Invalid input, please insert ERROR <byte_num>");
+                    continue;
+                }
+                try {
+                    int errorPosition = Integer.parseInt(inputSplit[1]);
+                    if (errorPosition < 0 || errorPosition >= DATA_SIZE) {
+                        System.err.println("Please enter a position between 0 and " + (DATA_SIZE - 1));
+                        continue;
                     }
+                    data[errorPosition].makeByteCorrupt();
+                    System.out.println("Is parity ok? " + data[errorPosition].isParityOk());
+                    System.out.println("Successful error insertion");
+                } catch (NumberFormatException e) {
+                    System.err.println("Invalid position for error insertion");
                 }
             }
         }
@@ -235,7 +232,6 @@ public class StorageNode {
             int dirPort = Integer.parseInt(dirPortString);
             int nodePort = Integer.parseInt(nodePortString);
             StorageNode node = new StorageNode(addr, dirPort, nodePort, dataFilePath);
-            //TODO: Launch another thread for console input for error injection
             node.start();
         } catch (NumberFormatException e) {
             System.err.println("Port numbers must be integers");
