@@ -16,14 +16,15 @@ public class DataClient {
 
     private DataClient(String addr, int port) {
         frame = new JFrame("Data Client");
+        StorageClient tempClient = null;
         try {
-            client = new StorageClient(addr, port);
+            tempClient = new StorageClient(addr, port);
         } catch (IOException e) {
             JOptionPane.showMessageDialog(frame, "Não foi possível estabelecer ligação ao nó", "Erro",
                     JOptionPane.ERROR_MESSAGE);
             e.printStackTrace();
-            throw new IllegalStateException("Failed to initialize client");
         }
+        client = tempClient;
         positionField = new JTextField(10);
         lengthField = new JTextField(10);
         resultArea = new JTextArea("Respostas aparecerão aqui...");
@@ -86,12 +87,12 @@ public class DataClient {
         c.ipadx = 16;
         frame.add(lengthField, c);
 
-        JButton SearchButton = new JButton("Consultar");
+        JButton searchButton = new JButton("Consultar");
         c.gridx = 4;
         c.weightx = 0.25;
         c.ipadx = 8;
-        frame.add(SearchButton, c);
-        SearchButton.addActionListener(e -> {
+        frame.add(searchButton, c);
+        searchButton.addActionListener(e -> {
             int start = Integer.parseInt(positionField.getText());
             int length = Integer.parseInt(lengthField.getText());
             try {
@@ -106,6 +107,7 @@ public class DataClient {
                 ex.printStackTrace();
             }
         });
+        if (client == null) searchButton.setEnabled(false);
 
         resultArea.setLineWrap(true);
         resultArea.setWrapStyleWord(true);

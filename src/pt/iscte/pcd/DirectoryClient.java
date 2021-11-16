@@ -45,7 +45,7 @@ public class DirectoryClient implements Closeable {
         List<String> results = new ArrayList<>();
         String line;
         try {
-            while (!(line = directoryReader.readLine()).equalsIgnoreCase("END")) results.add(line);
+            while (!(line = directoryReader.readLine()).equalsIgnoreCase("end")) results.add(line);
         } catch (IOException e) {
             System.err.println("Failed to get list of nodes");
             e.printStackTrace();
@@ -54,7 +54,7 @@ public class DirectoryClient implements Closeable {
         List<InetSocketAddress> addresses = new ArrayList<>(results.size());
         for (String v : results) {
             String[] split = v.split(" ");
-            if (split.length == 3 && split[0].compareToIgnoreCase("node") == 0) {
+            if (split.length == 3 && split[0].equalsIgnoreCase("node")) {
                 try {
                     InetSocketAddress addr = new InetSocketAddress(split[1], Integer.parseInt(split[2]));
                     // If no address or this node is self then ignore

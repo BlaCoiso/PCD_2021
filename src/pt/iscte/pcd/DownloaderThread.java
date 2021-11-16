@@ -47,6 +47,7 @@ public class DownloaderThread extends Thread {
             System.err.println("Downloader thread interrupted");
             e.printStackTrace();
         }
+        requestQueue.notifyWorkerEnd();
     }
 
     public int getCompletedRequests() {

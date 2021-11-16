@@ -50,7 +50,7 @@ public class StorageNode {
                 directory.close();
             } catch (IOException ignored) {
             }
-            throw new IllegalStateException("Failed to find nodes");
+            throw new IllegalStateException("Failed to find nodes for requesting data");
         }
         Queue<ByteBlockRequest> requests;
         if (length < ByteBlockRequest.BLOCK_LENGTH) {
@@ -67,7 +67,7 @@ public class StorageNode {
         }
         System.out.println("Sending " + requests.size() + " requests to " + nodes.length + " nodes");
 
-        SynchronizedRequestQueue<ByteBlockRequest> requestQueue = new SynchronizedRequestQueue<>(requests);
+        SynchronizedRequestQueue<ByteBlockRequest> requestQueue = new SynchronizedRequestQueue<>(requests, nodes.length);
 
         for (InetSocketAddress node : nodes) {
             System.out.println("Starting download thread for node " + node.getAddress().getHostAddress() + ":" + node.getPort());
@@ -77,8 +77,10 @@ public class StorageNode {
 
         try {
             requestQueue.await();
+            if (!requestQueue.isComplete())
+                throw new IllegalStateException("requestData failed: all download threads died");
         } catch (InterruptedException e) {
-            //This should never throw since there's nothing interrupting this call
+            //This should never throw since there's nothing interrupting this call/thread
             throw new IllegalStateException("requestData interrupted");
         }
     }
@@ -93,6 +95,7 @@ public class StorageNode {
             throw new IllegalArgumentException("File is invalid or cannot be read");
         }
         byte[] bytes = Files.readAllBytes(dataFile.toPath());
+        // Outside source for condition, should this even be an AssertionError?
         if (bytes.length != DATA_SIZE) throw new AssertionError("Expected bytes.length == " + DATA_SIZE);
         for (int i = 0; i < DATA_SIZE; ++i) {
             data[i] = new CloudByte(bytes[i]);
@@ -122,6 +125,7 @@ public class StorageNode {
             ErrorInjectionThread errorInjectionThread = new ErrorInjectionThread();
             errorInjectionThread.start();
 
+            System.out.println("Ready, listening for node connections on port " + nodePort);
             //noinspection InfiniteLoopStatement
             while (true) {
                 Socket sock = nodeSocket.accept();
@@ -172,7 +176,6 @@ public class StorageNode {
                         int start = request.startIndex;
                         int end = start + request.length;
                         if (start >= 0 && start < end && end <= data.length) {
-                            //TODO: Check for errors before sending
                             CloudByte[] dataToSend = Arrays.copyOfRange(data, start, end);
                             outStream.writeObject(dataToSend);
                             sentData = true;
@@ -214,9 +217,11 @@ public class StorageNode {
                         System.err.println("Please enter a position between 0 and " + (DATA_SIZE - 1));
                         continue;
                     }
-                    data[errorPosition].makeByteCorrupt();
-                    System.out.println("Is parity ok? " + data[errorPosition].isParityOk());
-                    System.out.println("Successful error insertion");
+                    CloudByte dataByte = data[errorPosition];
+                    byte before = dataByte.value;
+                    dataByte.makeByteCorrupt();
+                    System.out.println("Is parity ok? " + dataByte.isParityOk());
+                    System.out.println("Successful error insertion: value " + before + " -> " + dataByte.value);
                 } catch (NumberFormatException e) {
                     System.err.println("Invalid position for error insertion");
                 }
