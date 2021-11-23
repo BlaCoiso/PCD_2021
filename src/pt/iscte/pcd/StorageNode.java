@@ -5,10 +5,9 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Files;
-import java.util.ArrayDeque;
-import java.util.Arrays;
-import java.util.Queue;
-import java.util.Scanner;
+import java.util.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class StorageNode {
     private static final int DATA_SIZE = 1000000;
@@ -17,6 +16,7 @@ public class StorageNode {
     private int nodePort;
     private DirectoryClient directory = null;
     private final CloudByte[] data = new CloudByte[DATA_SIZE];
+    private final Lock[] correctionLocks = new Lock[DATA_SIZE];
     private boolean dataInitialized = false;
 
     public StorageNode(String directoryAddress, int directoryPort, int nodePort, String dataFilePath) {
@@ -35,6 +35,9 @@ public class StorageNode {
                 e.printStackTrace();
                 throw new IllegalArgumentException("Couldn't read data file");
             }
+        }
+        for (int i = 0; i < DATA_SIZE; i++) {
+            correctionLocks[i] = new ReentrantLock();
         }
     }
 
@@ -125,6 +128,11 @@ public class StorageNode {
             ErrorInjectionThread errorInjectionThread = new ErrorInjectionThread();
             errorInjectionThread.start();
 
+            ErrorCorrectionThread errorCorrectionThread1 = new ErrorCorrectionThread();
+            ErrorCorrectionThread errorCorrectionThread2 = new ErrorCorrectionThread();
+            errorCorrectionThread1.start();
+            errorCorrectionThread2.start();
+
             System.out.println("Ready, listening for node connections on port " + nodePort);
             //noinspection InfiniteLoopStatement
             while (true) {
@@ -146,6 +154,57 @@ public class StorageNode {
         } catch (IOException e) {
             System.err.println("Failed to close directory client");
             e.printStackTrace();
+        }
+    }
+
+    private class ErrorCorrectionThread extends Thread {
+        @Override
+        public void run() {
+            while (true) {
+                for (int i = 0; i < data.length; i++) {
+                    if (!data[i].isParityOk()) {
+                        Lock lock = correctionLocks[i];
+                        if (lock.tryLock()) {
+                            try {
+                                InetSocketAddress[] nodes = directory.getNodes();
+                                while (nodes.length < 2) {
+                                    sleep(1000);
+                                    nodes = directory.getNodes();
+                                }
+                                ByteCorrectionThread[] threads = new ByteCorrectionThread[nodes.length];
+                                CountDownLatch latch = new CountDownLatch(2);
+                                for (int j = 0; j < nodes.length; j++) {
+                                    threads[j] = new ByteCorrectionThread(nodes[j], i, latch);
+                                    threads[j].start();
+                                }
+                                latch.await();
+                                List<CloudByte> results = new ArrayList<>();
+                                for (ByteCorrectionThread thread : threads) {
+                                    CloudByte result = thread.getData();
+                                    if (result != null && result.isParityOk()) results.add(result);
+                                    thread.interrupt();
+                                }
+                                CloudByte first = results.remove(0);
+                                CloudByte second = results.remove(0);
+                                if (first.value != second.value) {
+                                    System.out.println("Bytes for correction have different values! first = " + first + ", second = " + second);
+                                    continue;
+                                }
+                                data[i] = first;
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            } finally {
+                                lock.unlock();
+                            }
+                        }
+                    }
+                }
+                try {
+                    sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
         }
     }
 
