@@ -191,6 +191,7 @@ public class StorageNode {
                                     continue;
                                 }
                                 data[i] = first;
+                                System.out.println("Thread: " + currentThread().getName() + " correct error in position: " + i);
                             } catch (InterruptedException e) {
                                 e.printStackTrace();
                             } finally {
