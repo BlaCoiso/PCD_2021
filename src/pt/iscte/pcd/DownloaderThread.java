@@ -10,6 +10,7 @@ public class DownloaderThread extends Thread {
     private int completedRequests = 0;
 
     public DownloaderThread(InetSocketAddress nodeAddr, SynchronizedRequestQueue<ByteBlockRequest> requestQueue, CloudByte[] data) {
+        super("Downloader Thread(" + nodeAddr.getAddress().getHostAddress() + ")");
         this.nodeAddr = nodeAddr;
         this.requestQueue = requestQueue;
         this.data = data;
@@ -46,8 +47,9 @@ public class DownloaderThread extends Thread {
         } catch (InterruptedException e) {
             System.err.println("Downloader thread interrupted");
             e.printStackTrace();
+        } finally {
+            requestQueue.notifyWorkerEnd();
         }
-        requestQueue.notifyWorkerEnd();
     }
 
     public int getCompletedRequests() {

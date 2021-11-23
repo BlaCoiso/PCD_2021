@@ -42,11 +42,6 @@ public class StorageNode {
     }
 
     private void requestData() {
-        requestData(0, DATA_SIZE);
-    }
-
-    //TODO: Refactor to outer class (DownloaderThread)
-    private void requestData(int start, int length) {
         InetSocketAddress[] nodes = directory.getNodes();
         if (nodes == null || nodes.length == 0) {
             try {
@@ -56,17 +51,10 @@ public class StorageNode {
             throw new IllegalStateException("Failed to find nodes for requesting data");
         }
         Queue<ByteBlockRequest> requests;
-        if (length < ByteBlockRequest.BLOCK_LENGTH) {
-            ByteBlockRequest req = new ByteBlockRequest(start, length);
-            requests = new ArrayDeque<>(1);
+        requests = new ArrayDeque<>(StorageNode.DATA_SIZE / ByteBlockRequest.BLOCK_LENGTH);
+        for (int i = 0; i < StorageNode.DATA_SIZE; i += ByteBlockRequest.BLOCK_LENGTH) {
+            ByteBlockRequest req = new ByteBlockRequest(i, ByteBlockRequest.BLOCK_LENGTH);
             requests.add(req);
-        } else {
-            requests = new ArrayDeque<>(length / ByteBlockRequest.BLOCK_LENGTH);
-            int end = start + length;
-            for (int i = start; i < end; i += ByteBlockRequest.BLOCK_LENGTH) {
-                ByteBlockRequest req = new ByteBlockRequest(i, Integer.min(end - start, ByteBlockRequest.BLOCK_LENGTH));
-                requests.add(req);
-            }
         }
         System.out.println("Sending " + requests.size() + " requests to " + nodes.length + " nodes");
 
@@ -128,8 +116,8 @@ public class StorageNode {
             ErrorInjectionThread errorInjectionThread = new ErrorInjectionThread();
             errorInjectionThread.start();
 
-            ErrorCorrectionThread errorCorrectionThread1 = new ErrorCorrectionThread();
-            ErrorCorrectionThread errorCorrectionThread2 = new ErrorCorrectionThread();
+            ErrorCorrectionThread errorCorrectionThread1 = new ErrorCorrectionThread(1);
+            ErrorCorrectionThread errorCorrectionThread2 = new ErrorCorrectionThread(2);
             errorCorrectionThread1.start();
             errorCorrectionThread2.start();
 
@@ -158,8 +146,13 @@ public class StorageNode {
     }
 
     private class ErrorCorrectionThread extends Thread {
+        public ErrorCorrectionThread(int id) {
+            super("Error Correction Thread-" + id);
+        }
+
         @Override
         public void run() {
+            //noinspection InfiniteLoopStatement
             while (true) {
                 for (int i = 0; i < data.length; i++) {
                     if (!data[i].isParityOk()) {
@@ -168,6 +161,7 @@ public class StorageNode {
                             try {
                                 InetSocketAddress[] nodes = directory.getNodes();
                                 while (nodes.length < 2) {
+                                    //Try to get nodes again after 1 second
                                     sleep(1000);
                                     nodes = directory.getNodes();
                                 }
@@ -215,6 +209,7 @@ public class StorageNode {
         private final ObjectInputStream inStream;
 
         public NodeThread(Socket socket) throws IOException {
+            super("Node Thread (" + socket.getInetAddress().getHostAddress() + ")");
             this.socket = socket;
             try {
                 this.outStream = new ObjectOutputStream(socket.getOutputStream());
@@ -260,6 +255,10 @@ public class StorageNode {
 
     private class ErrorInjectionThread extends Thread {
         private final Scanner scanner = new Scanner(System.in);
+
+        public ErrorInjectionThread() {
+            super("Error Injection Thread");
+        }
 
         public void run() {
             //noinspection InfiniteLoopStatement

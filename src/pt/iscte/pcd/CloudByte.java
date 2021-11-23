@@ -13,14 +13,14 @@ public class CloudByte implements Serializable {
     public CloudByte(byte value) {
         if (value < 0)
             throw new IllegalArgumentException("Invalid value for CloudByte");
-        if (countOnes(value) % 2 == 0)
+        if (evenParity(value))
             this.value = value;
         else
             this.value = (byte) -value;
     }
 
-    private static byte countOnes(byte value) {
-        return (byte) Integer.bitCount(value);
+    private static boolean evenParity(byte value) {
+        return Integer.bitCount(value) % 2 == 0;
     }
 
     public byte getValue() {
@@ -34,9 +34,9 @@ public class CloudByte implements Serializable {
      */
     public boolean isParityOk() {
         if (value < 0)
-            return countOnes(getValue()) % 2 == 1;
+            return !evenParity((byte) -value);
         else
-            return countOnes(getValue()) % 2 == 0;
+            return evenParity(value);
     }
 
     /**
