@@ -159,6 +159,7 @@ public class StorageNode {
                         Lock lock = correctionLocks[i];
                         if (lock.tryLock()) {
                             try {
+                                System.out.println("Detected error at index " + i + ", finding nodes for correction...");
                                 InetSocketAddress[] nodes = directory.getNodes();
                                 while (nodes.length < 2) {
                                     //Try to get nodes again after 1 second
@@ -168,6 +169,7 @@ public class StorageNode {
                                 ByteCorrectionThread[] threads = new ByteCorrectionThread[nodes.length];
                                 CountDownLatch latch = new CountDownLatch(2);
                                 for (int j = 0; j < nodes.length; j++) {
+                                    System.out.println("Starting ByteCorrectionThread for node " + nodes[j].getAddress().getHostAddress());
                                     threads[j] = new ByteCorrectionThread(nodes[j], i, latch);
                                     threads[j].start();
                                 }
