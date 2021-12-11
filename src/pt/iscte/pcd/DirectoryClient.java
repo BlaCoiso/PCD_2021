@@ -40,6 +40,11 @@ public class DirectoryClient implements Closeable {
         directorySocket.close();
     }
 
+    /**
+     * Requests the list of nodes registered on the directory
+     *
+     * @return The list of addresses of each node, or null if the connection fails
+     */
     public InetSocketAddress[] getNodes() {
         directoryWriter.println("nodes");
         List<String> results = new ArrayList<>();

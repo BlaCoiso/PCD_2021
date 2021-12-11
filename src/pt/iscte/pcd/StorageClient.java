@@ -28,6 +28,8 @@ public class StorageClient implements Closeable {
     private StorageClient(Socket nodeSocket) throws IOException {
         this.nodeSocket = nodeSocket;
         try {
+            // Timeout after 30 seconds
+            nodeSocket.setSoTimeout(30000);
             this.inStream = new ObjectInputStream(nodeSocket.getInputStream());
             this.outStream = new ObjectOutputStream(nodeSocket.getOutputStream());
         } catch (IOException e) {

@@ -5,9 +5,10 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Files;
-import java.util.*;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.ArrayDeque;
+import java.util.Arrays;
+import java.util.Queue;
+import java.util.Scanner;
 
 public class StorageNode {
     private static final int DATA_SIZE = 1000000;
@@ -16,7 +17,7 @@ public class StorageNode {
     private int nodePort;
     private DirectoryClient directory = null;
     private final CloudByte[] data = new CloudByte[DATA_SIZE];
-    private final Lock[] correctionLocks = new Lock[DATA_SIZE];
+    private ErrorCorrector errorCorrector = null;
     private boolean dataInitialized = false;
 
     public StorageNode(String directoryAddress, int directoryPort, int nodePort, String dataFilePath) {
@@ -35,9 +36,6 @@ public class StorageNode {
                 e.printStackTrace();
                 throw new IllegalArgumentException("Couldn't read data file");
             }
-        }
-        for (int i = 0; i < DATA_SIZE; i++) {
-            correctionLocks[i] = new ReentrantLock();
         }
     }
 
@@ -78,6 +76,7 @@ public class StorageNode {
 
     private void register() throws IOException {
         directory = new DirectoryClient(directoryAddress, directoryPort, nodePort);
+        errorCorrector = new ErrorCorrector(data, directory);
     }
 
     private void readData(String dataFilePath) throws IOException {
@@ -156,47 +155,19 @@ public class StorageNode {
             while (true) {
                 for (int i = 0; i < data.length; i++) {
                     if (!data[i].isParityOk()) {
-                        Lock lock = correctionLocks[i];
-                        if (lock.tryLock()) {
-                            try {
-                                System.out.println("Detected error at index " + i + ", finding nodes for correction...");
-                                InetSocketAddress[] nodes = directory.getNodes();
-                                while (nodes.length < 2) {
-                                    //Try to get nodes again after 1 second
-                                    sleep(1000);
-                                    nodes = directory.getNodes();
-                                }
-                                ByteCorrectionThread[] threads = new ByteCorrectionThread[nodes.length];
-                                CountDownLatch latch = new CountDownLatch(2);
-                                for (int j = 0; j < nodes.length; j++) {
-                                    System.out.println("Starting ByteCorrectionThread for node " + nodes[j].getAddress().getHostAddress());
-                                    threads[j] = new ByteCorrectionThread(nodes[j], i, latch);
-                                    threads[j].start();
-                                }
-                                latch.await();
-                                List<CloudByte> results = new ArrayList<>();
-                                for (ByteCorrectionThread thread : threads) {
-                                    CloudByte result = thread.getData();
-                                    if (result != null && result.isParityOk()) results.add(result);
-                                    thread.interrupt();
-                                }
-                                CloudByte first = results.remove(0);
-                                CloudByte second = results.remove(0);
-                                if (first.value != second.value) {
-                                    System.out.println("Bytes for correction have different values! first = " + first + ", second = " + second);
-                                    continue;
-                                }
-                                data[i] = first;
-                                System.out.println("Thread: " + currentThread().getName() + " correct error in position: " + i);
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
-                            } finally {
-                                lock.unlock();
+                        try {
+                            while (!errorCorrector.tryCorrect(i) && !errorCorrector.isCorrecting(i)) {
+                                //Failed to correct this error, try again in 1 second
+                                sleep(1000);
                             }
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
                         }
                     }
                 }
                 try {
+                    //Try to find and correct errors again after 1 second, to save CPU resources
+                    //noinspection BusyWait
                     sleep(1000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
@@ -211,7 +182,7 @@ public class StorageNode {
         private final ObjectInputStream inStream;
 
         public NodeThread(Socket socket) throws IOException {
-            super("Node Thread (" + socket.getInetAddress().getHostAddress() + ")");
+            super("Node Thread (" + socket.getInetAddress().getHostAddress() + ":" + socket.getPort() + ")");
             this.socket = socket;
             try {
                 this.outStream = new ObjectOutputStream(socket.getOutputStream());
@@ -233,9 +204,20 @@ public class StorageNode {
                         int start = request.startIndex;
                         int end = start + request.length;
                         if (start >= 0 && start < end && end <= data.length) {
-                            CloudByte[] dataToSend = Arrays.copyOfRange(data, start, end);
-                            outStream.writeObject(dataToSend);
-                            sentData = true;
+                            try {
+                                boolean canSend = true;
+                                for (int i = start; i < end; ++i) {
+                                    if (!errorCorrector.correct(i)) canSend = false;
+                                }
+                                if (canSend) {
+                                    CloudByte[] dataToSend = Arrays.copyOfRange(data, start, end);
+                                    outStream.writeObject(dataToSend);
+                                    sentData = true;
+                                } else {
+                                    System.err.println("Detected errors while sending response, correction failed");
+                                }
+                            } catch (InterruptedException ignored) {
+                            }
                         }
                     }
                     //Prevent remote from blocking if incorrect request received
