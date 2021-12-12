@@ -48,9 +48,10 @@ public class DirectoryClient implements Closeable {
     public InetSocketAddress[] getNodes() {
         directoryWriter.println("nodes");
         List<String> results = new ArrayList<>();
-        String line;
         try {
-            while (!(line = directoryReader.readLine()).equalsIgnoreCase("end")) results.add(line);
+            String line;
+            while ((line = directoryReader.readLine()) != null && !line.equalsIgnoreCase("end")) results.add(line);
+            if (line == null) return null;
         } catch (IOException e) {
             System.err.println("Failed to get list of nodes");
             e.printStackTrace();
@@ -71,6 +72,10 @@ public class DirectoryClient implements Closeable {
             }
         }
         return addresses.toArray(new InetSocketAddress[0]);
+    }
+
+    public boolean isConnected() {
+        return directorySocket.isConnected();
     }
 
     @Override
