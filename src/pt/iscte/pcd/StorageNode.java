@@ -245,8 +245,7 @@ public class StorageNode {
         }
 
         public void run() {
-            //noinspection InfiniteLoopStatement
-            while (true) {
+            while (scanner.hasNextLine()) {
                 String input = scanner.nextLine();
                 if (input == null || input.isEmpty()) continue;
                 String[] inputSplit = input.split(" ");
